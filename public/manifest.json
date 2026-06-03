@@ -1,0 +1,17 @@
+{
+  "name": "FamilyBank",
+  "short_name": "FamilyBank",
+  "description": "Gestão financeira familiar em tempo real",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F0F4FF",
+  "theme_color": "#0284C7",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
