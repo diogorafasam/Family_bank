@@ -207,17 +207,25 @@ function useFamily(familyId){
   const load=async()=>{
     if(!familyId)return;
     try{
-      const[fa,me,ac,tx,go,ca,bu]=await Promise.all([
-        sb.from("families").select("*").eq("id",familyId).single(),
-        sb.from("family_members").select("*").eq("family_id",familyId),
-        sb.from("accounts").select("*").eq("family_id",familyId).order("created_at"),
-        sb.from("transactions").select("*").eq("family_id",familyId).order("date",{ascending:false}).order("created_at",{ascending:false}),
-        sb.from("goals").select("*").eq("family_id",familyId).order("created_at"),
-        sb.from("categories").select("*").eq("family_id",familyId).order("created_at"),
-        sb.from("budgets").select("*").eq("family_id",familyId),
-      ]);
-      setD({family:fa.data,members:me.data||[],accounts:ac.data||[],transactions:tx.data||[],goals:go.data||[],categories:ca.data||[],budgets:bu.data||[]});
-    }catch(e){console.error(e);}
+      // Load each separately so one failure doesn't block everything
+      const fa=await sb.from("families").select("*").eq("id",familyId).single();
+      const me=await sb.from("family_members").select("*").eq("family_id",familyId);
+      const ac=await sb.from("accounts").select("*").eq("family_id",familyId).order("created_at");
+      const tx=await sb.from("transactions").select("*").eq("family_id",familyId).order("date",{ascending:false});
+      const go=await sb.from("goals").select("*").eq("family_id",familyId).order("created_at");
+      const ca=await sb.from("categories").select("*").eq("family_id",familyId).order("label");
+      const bu=await sb.from("budgets").select("*").eq("family_id",familyId);
+      if(tx.error)console.error("TX ERROR:",tx.error.message);
+      setD({
+        family:fa.data,
+        members:me.data||[],
+        accounts:ac.data||[],
+        transactions:tx.data||[],
+        goals:go.data||[],
+        categories:ca.data||[],
+        budgets:bu.data||[],
+      });
+    }catch(e){console.error("load error:",e);}
     setLoading(false);
   };
   useEffect(()=>{
@@ -303,7 +311,7 @@ function Dashboard({d}){
 }
 
 // ─── TRANSAÇÕES ───────────────────────────────────────────────────────────────
-function Transactions({d,familyId,userId,toast}){
+function Transactions({d,familyId,userId,toast,reload}){
   const T=useT();
   const{transactions:tx,categories:cats,members,accounts}=d;
   const [mdl,setMdl]=useState(null);
@@ -316,28 +324,42 @@ function Transactions({d,familyId,userId,toast}){
   // ── GUARDAR TRANSAÇÃO + ATUALIZAR SALDO DA CONTA ──────────────────────────
   const save=async(f)=>{
     const amount=parseFloat(f.amount);
-    const row={family_id:familyId,user_id:userId,type:f.type,amount,category:f.category,description:f.description,date:f.date,recurring:f.recurring||false,account_id:f.account_id||null};
+    const row={
+      family_id:familyId,
+      user_id:userId,
+      type:f.type,
+      amount,
+      category:f.category||cats[0]?.id||"outros",
+      description:f.description,
+      date:f.date,
+      recurring:f.recurring||false,
+      account_id:f.account_id||null,
+    };
 
+    let err=null;
     if(f.id){
-      // Editar: reverter efeito antigo na conta e aplicar novo
-      const old=tx.find(t=>t.id===f.id);
-      if(old&&old.account_id){
-        const oldAmount=parseFloat(old.amount);
-        const revert=old.type==="expense"?oldAmount:-oldAmount;
-        await sb.from("accounts").update({balance:sb.rpc?undefined:undefined}).eq("id",old.account_id);
-        // Calcular saldo atual da conta
-        const{data:accData}=await sb.from("accounts").select("balance").eq("id",old.account_id).single();
+      // Editar: reverter saldo antigo e aplicar novo
+      const oldTx=tx.find(t=>t.id===f.id);
+      if(oldTx?.account_id){
+        const{data:accData}=await sb.from("accounts").select("balance").eq("id",oldTx.account_id).single();
         if(accData){
-          const newBal=parseFloat(accData.balance)+revert;
-          await sb.from("accounts").update({balance:newBal}).eq("id",old.account_id);
+          const revert=oldTx.type==="expense"?parseFloat(oldTx.amount):-parseFloat(oldTx.amount);
+          await sb.from("accounts").update({balance:parseFloat(accData.balance)+revert}).eq("id",oldTx.account_id);
         }
       }
-      await sb.from("transactions").update(row).eq("id",f.id);
+      const res=await sb.from("transactions").update(row).eq("id",f.id);
+      err=res.error;
     } else {
-      await sb.from("transactions").insert({...row,id:uid()});
+      const res=await sb.from("transactions").insert({...row,id:uid()});
+      err=res.error;
     }
 
-    // Atualizar saldo da conta selecionada
+    if(err){
+      alert("Erro ao guardar transação: "+err.message);
+      return;
+    }
+
+    // Atualizar saldo da conta
     if(f.account_id){
       const{data:accData}=await sb.from("accounts").select("balance").eq("id",f.account_id).single();
       if(accData){
@@ -346,13 +368,14 @@ function Transactions({d,familyId,userId,toast}){
       }
     }
 
-    toast(f.type==="income"?"Receita adicionada: "+fmt(amount):"Despesa adicionada: "+fmt(amount),f.type==="income"?"📥":"📤");
+    toast(f.type==="income"?"Receita: "+fmt(amount):"Despesa: "+fmt(amount),f.type==="income"?"📥":"📤");
     setMdl(null);
+    // Force reload to show new transaction
+    setTimeout(()=>load(),500);
   };
 
   // ── ELIMINAR TRANSAÇÃO + REVERTER SALDO ───────────────────────────────────
   const del=async(t)=>{
-    // Reverter efeito no saldo da conta
     if(t.account_id){
       const{data:accData}=await sb.from("accounts").select("balance").eq("id",t.account_id).single();
       if(accData){
@@ -361,7 +384,8 @@ function Transactions({d,familyId,userId,toast}){
       }
     }
     await sb.from("transactions").delete().eq("id",t.id);
-    toast("Transação eliminada e saldo revertido","🗑️");
+    toast("Transação eliminada","🗑️");
+    setTimeout(()=>load(),500);
   };
 
   return <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -573,24 +597,88 @@ function GoalModal({init,onClose,onSave}){
 }
 
 // ─── MEMBROS ─────────────────────────────────────────────────────────────────
-function Members({d}){
+function Members({d,familyId,toast}){
   const T=useT();
-  const{members,family}=d;
+  const{members,family,transactions:tx}=d;
   const code=family?.invite_code||"...";
   const [copied,setCopied]=useState(false);
-  const copy=()=>{try{navigator.clipboard.writeText(code);}catch(e){}setCopied(true);setTimeout(()=>setCopied(false),2000);};
-  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
-    <div><h2 style={{fontSize:17,fontWeight:600}}>Membros</h2><p style={{fontSize:13,color:T.text2,marginTop:3}}>{family?.name||"—"} · {members.length} membro{members.length!==1?"s":""}</p></div>
+  const [shareMsg,setShareMsg]=useState(false);
+  const copy=()=>{
+    try{navigator.clipboard.writeText(code);}catch(e){}
+    setCopied(true);setTimeout(()=>setCopied(false),2500);
+    toast("Código copiado!","📋");
+  };
+  const share=()=>{
+    const msg="Olá! Podes juntar-te à nossa família no FamilyBank.\n\nLink: "+window.location.origin+"\nCódigo de convite: "+code.toUpperCase()+"\n\n1. Abre o link\n2. Escolhe 'Tenho convite'\n3. Insere o código acima";
+    if(navigator.share){navigator.share({title:"FamilyBank — Convite",text:msg});}
+    else{try{navigator.clipboard.writeText(msg);}catch(e){}toast("Mensagem copiada para partilhar!","📤");}
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <div><h2 style={{fontSize:17,fontWeight:600}}>Membros da Família</h2><p style={{fontSize:13,color:T.text2,marginTop:3}}>{family?.name||"—"} · {members.length} membro{members.length!==1?"s":""}</p></div>
+
+    {/* Cards dos membros */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:12}}>
-      {members.map(m=><div key={m.id} className="card fu"><div style={{display:"flex",alignItems:"center",gap:12}}><Av m={m} s={46}/><div><div style={{fontWeight:700,fontSize:15}}>{m.name}</div><span className="badge" style={{background:m.role==="admin"?T.accentS:T.elevated,color:m.role==="admin"?T.accent:T.text2,marginTop:4}}>{m.role==="admin"?"⭐ Admin":"👤 Membro"}</span></div></div></div>)}
+      {members.map(m=>{
+        const mTx=tx.filter(t=>t.user_id===m.user_id);
+        const mExp=mTx.filter(t=>t.type==="expense").reduce((s,t)=>s+parseFloat(t.amount),0);
+        const mInc=mTx.filter(t=>t.type==="income").reduce((s,t)=>s+parseFloat(t.amount),0);
+        return <div key={m.id} className="card fu">
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+            <Av m={m} s={46}/>
+            <div>
+              <div style={{fontWeight:700,fontSize:15}}>{m.name}</div>
+              <span className="badge" style={{background:m.role==="admin"?T.accentS:T.elevated,color:m.role==="admin"?T.accent:T.text2,marginTop:4}}>{m.role==="admin"?"⭐ Admin":"👤 Membro"}</span>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:9}}>
+            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}>
+              <div style={{fontSize:10,color:T.text2,marginBottom:3}}>RECEITAS</div>
+              <div className="mono" style={{fontSize:13,fontWeight:700,color:T.green}}>{fmt(mInc)}</div>
+            </div>
+            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}>
+              <div style={{fontSize:10,color:T.text2,marginBottom:3}}>DESPESAS</div>
+              <div className="mono" style={{fontSize:13,fontWeight:700,color:T.red}}>{fmt(mExp)}</div>
+            </div>
+          </div>
+        </div>;
+      })}
     </div>
-    <div className="card">
-      <div style={{fontWeight:600,marginBottom:8}}>📩 Código de convite</div>
-      <p style={{fontSize:13,color:T.text2,marginBottom:13,lineHeight:1.6}}>Envia este código a quem queres convidar. Na app escolhem <strong style={{color:T.text}}>"Tenho convite"</strong>.</p>
-      <div style={{display:"flex",gap:9,alignItems:"center"}}>
-        <div style={{flex:1,padding:"12px 16px",background:T.elevated,border:"1px dashed "+T.border,borderRadius:9}}><span className="mono" style={{fontSize:20,letterSpacing:4,color:T.accent,fontWeight:700}}>{code.toUpperCase()}</span></div>
-        <button className="gbtn" onClick={copy}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
+
+    {/* Convidar novo membro */}
+    <div className="card" style={{border:"2px dashed "+T.accent+"44"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <div style={{width:40,height:40,background:T.accentS,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👋</div>
+        <div><div style={{fontWeight:600,fontSize:15}}>Convidar membro</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>Partilha o código para alguém entrar na família</div></div>
       </div>
+
+      {/* Código */}
+      <div style={{padding:"14px 18px",background:T.elevated,border:"2px dashed "+T.accent+"44",borderRadius:12,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{fontSize:11,color:T.text2,marginBottom:4,textTransform:"uppercase",letterSpacing:".8px"}}>Código de convite</div>
+          <span className="mono" style={{fontSize:22,letterSpacing:5,color:T.accent,fontWeight:800}}>{code.toUpperCase()}</span>
+        </div>
+        <button className="btn" onClick={copy} style={{flexShrink:0}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
+      </div>
+
+      {/* Instruções */}
+      <div style={{background:T.elevated,borderRadius:12,padding:"13px 15px",marginBottom:12}}>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>Como a outra pessoa entra:</div>
+        {[
+          {n:"1",t:"Abre o link da app",s:window.location.origin},
+          {n:"2",t:"Toca em "Tenho convite"",s:"No ecrã de login"},
+          {n:"3",t:"Preenche o nome e email",s:"Cria uma palavra-passe nova"},
+          {n:"4",t:"Insere o código acima",s:"E toca em "Entrar na família""},
+        ].map(step=><div key={step.n} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
+          <div style={{width:22,height:22,borderRadius:"50%",background:T.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,marginTop:1}}>{step.n}</div>
+          <div><div style={{fontSize:13,fontWeight:500}}>{step.t}</div><div style={{fontSize:11,color:T.text2,marginTop:1}}>{step.s}</div></div>
+        </div>)}
+      </div>
+
+      {/* Botão partilhar */}
+      <button className="btn" onClick={share} style={{width:"100%",justifyContent:"center"}}>
+        📤 Partilhar convite (WhatsApp / Mensagem)
+      </button>
     </div>
   </div>;
 }
@@ -642,7 +730,7 @@ export default function App(){
   };
 
   const logout=async()=>await sb.auth.signOut();
-  const{d,loading:dataLoading}=useFamily(familyId);
+  const{d,loading:dataLoading,reload}=useFamily(familyId);
 
   const NAV_M=[{id:"dashboard",icon:"⊞",label:"Dashboard"},{id:"accounts",icon:"🏦",label:"Contas"},{id:"transactions",icon:"↕",label:"Transações"},{id:"goals",icon:"🎯",label:"Objetivos"},{id:"members",icon:"👥",label:"Membros"}];
   const NAV_B=[{id:"settings",icon:"⚙️",label:"Definições"}];
@@ -686,9 +774,9 @@ export default function App(){
           {dataLoading?<Spinner/>:<>
             {tab==="dashboard"&&<Dashboard d={d}/>}
             {tab==="accounts"&&<Accounts d={d} familyId={familyId} toast={toast}/>}
-            {tab==="transactions"&&<Transactions d={d} familyId={familyId} userId={user.id} toast={toast}/>}
+            {tab==="transactions"&&<Transactions d={d} familyId={familyId} userId={user.id} toast={toast} reload={reload}/>}
             {tab==="goals"&&<Goals d={d} familyId={familyId} toast={toast}/>}
-            {tab==="members"&&<Members d={d}/>}
+            {tab==="members"&&<Members d={d} familyId={familyId} toast={toast}/>}
             {tab==="settings"&&<Settings user={user} dark={dark} setDark={setDark} onLogout={logout}/>}
           </>}
         </div>
