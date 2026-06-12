@@ -311,7 +311,7 @@ function Dashboard({d}){
 }
 
 // ─── TRANSAÇÕES ───────────────────────────────────────────────────────────────
-function Transactions({d,familyId,userId,toast,reload}){
+function Transactions({d,familyId,userId,toast,reload,externalMdl,onExternalMdlClear}){
   const T=useT();
   const{transactions:tx,categories:cats,members,accounts}=d;
   const [mdl,setMdl]=useState(null);
@@ -320,6 +320,8 @@ function Transactions({d,familyId,userId,toast,reload}){
   const gc=id=>cats.find(c=>c.id===id)||{icon:"📦",label:"Outros",color:"#64748B"};
   const gm=id=>members.find(m=>m.user_id===id)||{name:"?",color:"#64748B"};
   const list=tx.filter(t=>ft==="all"||t.type===ft).filter(t=>!search||t.description.toLowerCase().includes(search.toLowerCase()));
+  // Open modal from external trigger (FAB button)
+  useEffect(()=>{if(externalMdl){setMdl(externalMdl);onExternalMdlClear&&onExternalMdlClear();}}, [externalMdl]);
 
   // ── GUARDAR TRANSAÇÃO + ATUALIZAR SALDO DA CONTA ──────────────────────────
   const save=async(f)=>{
@@ -392,7 +394,7 @@ function Transactions({d,familyId,userId,toast,reload}){
     <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
       <input className="inp" placeholder="🔍 Pesquisar..." value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:200}}/>
       <select className="sel" value={ft} onChange={e=>setFt(e.target.value)} style={{maxWidth:140}}><option value="all">Todos</option><option value="income">Receitas</option><option value="expense">Despesas</option></select>
-      <button className="btn" onClick={()=>setMdl("new")} style={{marginLeft:"auto"}}>+ Nova</button>
+      <button className="btn" onClick={()=>setMdl("new")} style={{marginLeft:"auto"}}>+ Nova transação</button>
     </div>
     <div className="card" style={{padding:0,overflow:"hidden"}}>
       <table className="tbl">
@@ -707,6 +709,7 @@ export default function App(){
   const [tab,setTab]=useState("dashboard");
   const [toasts,setToasts]=useState([]);
   const [sidebar,setSidebar]=useState(true);
+  const [globalMdlTx,setGlobalMdlTx]=useState(null);
   const toast=(msg,icon)=>{const id=uid();setToasts(p=>[...p,{id,msg,icon:icon||"🔔"}]);};
 
   useEffect(()=>{
@@ -767,14 +770,14 @@ export default function App(){
           <div style={{display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
             <button className="tbtn" onClick={()=>setDark(p=>!p)}>{dark?"☀️":"🌙"}</button>
             <div className="hide-m" style={{display:"flex",gap:3}}>{d.members.slice(0,3).map(m=><Av key={m.id} m={m} s={27}/>)}</div>
-            {tab==="transactions"&&<button className="btn hide-m" onClick={()=>{}}>+ Adicionar</button>}
+            {tab==="transactions"&&<button className="btn hide-m" onClick={()=>setGlobalMdlTx("new")}>+ Adicionar</button>}
           </div>
         </div>
         <div className="main-wrap pad" style={{flex:1,overflow:"auto",padding:"18px",background:T.bg}}>
           {dataLoading?<Spinner/>:<>
             {tab==="dashboard"&&<Dashboard d={d}/>}
             {tab==="accounts"&&<Accounts d={d} familyId={familyId} toast={toast}/>}
-            {tab==="transactions"&&<Transactions d={d} familyId={familyId} userId={user.id} toast={toast} reload={reload}/>}
+            {tab==="transactions"&&<Transactions d={d} familyId={familyId} userId={user.id} toast={toast} reload={reload} externalMdl={globalMdlTx} onExternalMdlClear={()=>setGlobalMdlTx(null)}/>}
             {tab==="goals"&&<Goals d={d} familyId={familyId} toast={toast}/>}
             {tab==="members"&&<Members d={d} familyId={familyId} toast={toast}/>}
             {tab==="settings"&&<Settings user={user} dark={dark} setDark={setDark} onLogout={logout}/>}
@@ -784,7 +787,7 @@ export default function App(){
     </div>
     <nav className="bot-nav">
       {BNAV.map(item=><button key={item.id} className={"bnav-btn "+(tab===item.id?"on":"")} onClick={()=>setTab(item.id)}><span className="bnav-icon">{item.icon}</span><span>{item.label}</span></button>)}
-      <button className="fab" onClick={()=>setTab("transactions")}>+</button>
+      <button className="fab" onClick={()=>{setTab("transactions");setGlobalMdlTx("new");}}>+</button>
     </nav>
     <div style={{position:"fixed",bottom:74,right:14,display:"flex",flexDirection:"column",gap:8,zIndex:999,maxWidth:300}}>
       {toasts.slice(-3).map(t=><Toast key={t.id} msg={t.msg} icon={t.icon} onClose={()=>setToasts(p=>p.filter(x=>x.id!==t.id))}/>)}
