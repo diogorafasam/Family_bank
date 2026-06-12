@@ -602,7 +602,7 @@ function GoalModal({init,onClose,onSave}){
 function Members({d,familyId,toast}){
   const T=useT();
   const{members,family,transactions:tx}=d;
-  const code=family?.invite_code||"...";
+  const code=(family?.invite_code||"???").toUpperCase();
   const [copied,setCopied]=useState(false);
   const [shareMsg,setShareMsg]=useState(false);
   const copy=()=>{
@@ -658,7 +658,7 @@ function Members({d,familyId,toast}){
       <div style={{padding:"14px 18px",background:T.elevated,border:"2px dashed "+T.accent+"44",borderRadius:12,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
         <div>
           <div style={{fontSize:11,color:T.text2,marginBottom:4,textTransform:"uppercase",letterSpacing:".8px"}}>Código de convite</div>
-          <span className="mono" style={{fontSize:22,letterSpacing:5,color:T.accent,fontWeight:800}}>{code.toUpperCase()}</span>
+          <span className="mono" style={{fontSize:22,letterSpacing:5,color:T.accent,fontWeight:800}}>{code}</span>
         </div>
         <button className="btn" onClick={copy} style={{flexShrink:0}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
       </div>
@@ -739,7 +739,7 @@ export default function App(){
   const NAV_B=[{id:"settings",icon:"⚙️",label:"Definições"}];
   const allNav=[...NAV_M,...NAV_B];
   const cur=allNav.find(n=>n.id===tab);
-  const BNAV=[{id:"dashboard",icon:"⊞",label:"Início"},{id:"accounts",icon:"🏦",label:"Contas"},{id:"transactions",icon:"↕",label:"Transações"},{id:"goals",icon:"🎯",label:"Objetivos"},{id:"settings",icon:"⚙️",label:"Definições"}];
+  const BNAV=[{id:"dashboard",icon:"⊞",label:"Início"},{id:"transactions",icon:"↕",label:"Transações"},{id:"goals",icon:"🎯",label:"Objetivos"},{id:"members",icon:"👥",label:"Membros"},{id:"settings",icon:"⚙️",label:"Definições"}];
 
   if(authLoading)return(<Ctx.Provider value={T}><style dangerouslySetInnerHTML={{__html:CSS}}/><div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:T.bg}}><div className="spinner"/></div></Ctx.Provider>);
   if(!user)return(<Ctx.Provider value={T}><style dangerouslySetInnerHTML={{__html:CSS}}/><AuthScreen/></Ctx.Provider>);
