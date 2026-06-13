@@ -599,27 +599,11 @@ function GoalModal({init,onClose,onSave}){
 }
 
 // ─── MEMBROS ─────────────────────────────────────────────────────────────────
-function Members({d,familyId,toast}){
+function Members({d}){
   const T=useT();
   const{members,family,transactions:tx}=d;
-  const code=(family?.invite_code||"???").toUpperCase();
-  const [copied,setCopied]=useState(false);
-  const [shareMsg,setShareMsg]=useState(false);
-  const copy=()=>{
-    try{navigator.clipboard.writeText(code);}catch(e){}
-    setCopied(true);setTimeout(()=>setCopied(false),2500);
-    toast("Código copiado!","📋");
-  };
-  const share=()=>{
-    const msg="Olá! Podes juntar-te à nossa família no FamilyBank.\n\nLink: "+window.location.origin+"\nCódigo de convite: "+code.toUpperCase()+"\n\n1. Abre o link\n2. Escolhe 'Tenho convite'\n3. Insere o código acima";
-    if(navigator.share){navigator.share({title:"FamilyBank — Convite",text:msg});}
-    else{try{navigator.clipboard.writeText(msg);}catch(e){}toast("Mensagem copiada para partilhar!","📤");}
-  };
-
   return <div style={{display:"flex",flexDirection:"column",gap:16}}>
     <div><h2 style={{fontSize:17,fontWeight:600}}>Membros da Família</h2><p style={{fontSize:13,color:T.text2,marginTop:3}}>{family?.name||"—"} · {members.length} membro{members.length!==1?"s":""}</p></div>
-
-    {/* Cards dos membros */}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:12}}>
       {members.map(m=>{
         const mTx=tx.filter(t=>t.user_id===m.user_id);
@@ -628,73 +612,112 @@ function Members({d,familyId,toast}){
         return <div key={m.id} className="card fu">
           <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
             <Av m={m} s={46}/>
-            <div>
-              <div style={{fontWeight:700,fontSize:15}}>{m.name}</div>
+            <div><div style={{fontWeight:700,fontSize:15}}>{m.name}</div>
               <span className="badge" style={{background:m.role==="admin"?T.accentS:T.elevated,color:m.role==="admin"?T.accent:T.text2,marginTop:4}}>{m.role==="admin"?"⭐ Admin":"👤 Membro"}</span>
             </div>
           </div>
           <div style={{display:"flex",gap:9}}>
-            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}>
-              <div style={{fontSize:10,color:T.text2,marginBottom:3}}>RECEITAS</div>
-              <div className="mono" style={{fontSize:13,fontWeight:700,color:T.green}}>{fmt(mInc)}</div>
-            </div>
-            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}>
-              <div style={{fontSize:10,color:T.text2,marginBottom:3}}>DESPESAS</div>
-              <div className="mono" style={{fontSize:13,fontWeight:700,color:T.red}}>{fmt(mExp)}</div>
-            </div>
+            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}><div style={{fontSize:10,color:T.text2,marginBottom:3}}>RECEITAS</div><div className="mono" style={{fontSize:13,fontWeight:700,color:T.green}}>{fmt(mInc)}</div></div>
+            <div style={{flex:1,background:T.elevated,borderRadius:9,padding:"8px 11px"}}><div style={{fontSize:10,color:T.text2,marginBottom:3}}>DESPESAS</div><div className="mono" style={{fontSize:13,fontWeight:700,color:T.red}}>{fmt(mExp)}</div></div>
           </div>
         </div>;
       })}
-    </div>
-
-    {/* Convidar novo membro */}
-    <div className="card" style={{border:"2px dashed "+T.accent+"44"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-        <div style={{width:40,height:40,background:T.accentS,borderRadius:11,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👋</div>
-        <div><div style={{fontWeight:600,fontSize:15}}>Convidar membro</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>Partilha o código para alguém entrar na família</div></div>
-      </div>
-
-      {/* Código */}
-      <div style={{padding:"14px 18px",background:T.elevated,border:"2px dashed "+T.accent+"44",borderRadius:12,marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-        <div>
-          <div style={{fontSize:11,color:T.text2,marginBottom:4,textTransform:"uppercase",letterSpacing:".8px"}}>Código de convite</div>
-          <span className="mono" style={{fontSize:22,letterSpacing:5,color:T.accent,fontWeight:800}}>{code}</span>
-        </div>
-        <button className="btn" onClick={copy} style={{flexShrink:0}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
-      </div>
-
-      {/* Instruções */}
-      <div style={{background:T.elevated,borderRadius:12,padding:"13px 15px",marginBottom:12}}>
-        <div style={{fontWeight:600,fontSize:13,marginBottom:10}}>Como a outra pessoa entra:</div>
-        {[
-          {n:"1",t:"Abre o link da app",s:window.location.origin},
-          {n:"2",t:"Toca em 'Tenho convite'",s:"No ecrã de login"},
-          {n:"3",t:"Preenche o nome e email",s:"Cria uma palavra-passe nova"},
-          {n:"4",t:"Insere o código acima",s:"E toca em 'Entrar na família'"},
-        ].map(step=><div key={step.n} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
-          <div style={{width:22,height:22,borderRadius:"50%",background:T.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,marginTop:1}}>{step.n}</div>
-          <div><div style={{fontSize:13,fontWeight:500}}>{step.t}</div><div style={{fontSize:11,color:T.text2,marginTop:1}}>{step.s}</div></div>
-        </div>)}
-      </div>
-
-      {/* Botão partilhar */}
-      <button className="btn" onClick={share} style={{width:"100%",justifyContent:"center"}}>
-        📤 Partilhar convite (WhatsApp / Mensagem)
-      </button>
     </div>
   </div>;
 }
 
 // ─── DEFINIÇÕES ───────────────────────────────────────────────────────────────
-function Settings({user,dark,setDark,onLogout}){
+function Settings({user,dark,setDark,onLogout,d}){
   const T=useT();
-  const [pass,setPass]=useState(""); const [saving,setSaving]=useState(false); const [msg,setMsg]=useState("");
-  const changePass=async()=>{if(pass.length<6){setMsg("Mínimo 6 caracteres");return;}setSaving(true);const{error}=await sb.auth.updateUser({password:pass});setSaving(false);setPass("");setMsg(error?error.message:"✓ Atualizada!");};
-  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+  const [pass,setPass]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState("");
+  const [copied,setCopied]=useState(false);
+  const family=d?.family;
+  const members=d?.members||[];
+  const code=(family?.invite_code||"???").toUpperCase();
+
+  const changePass=async()=>{
+    if(pass.length<6){setMsg("Mínimo 6 caracteres");return;}
+    setSaving(true);
+    const{error}=await sb.auth.updateUser({password:pass});
+    setSaving(false);setPass("");
+    setMsg(error?error.message:"✓ Palavra-passe atualizada!");
+  };
+
+  const copy=()=>{
+    try{navigator.clipboard.writeText(code);}catch(e){}
+    setCopied(true);setTimeout(()=>setCopied(false),2500);
+  };
+
+  const share=()=>{
+    const link=window.location.origin;
+    const msg2="Olá! Junta-te à nossa família no FamilyBank 🏦\n\nLink: "+link+"\nCódigo: "+code+"\n\nAbre o link → escolhe 'Tenho convite' → insere o código.";
+    if(navigator.share){navigator.share({title:"FamilyBank — Convite",text:msg2});}
+    else{try{navigator.clipboard.writeText(msg2);}catch(e){}setMsg("✓ Mensagem copiada! Cola no WhatsApp.");}
+  };
+
+  return <div style={{display:"flex",flexDirection:"column",gap:14}}>
     <div><h2 style={{fontSize:17,fontWeight:600}}>Definições</h2></div>
-    <div className="card"><div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Aparência</div><div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}><span style={{fontSize:14}}>Modo Escuro</span><Tog on={dark} toggle={()=>setDark(p=>!p)}/></div></div>
-    <div className="card"><div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Segurança</div><div style={{marginBottom:13}}><Lbl>Nova palavra-passe</Lbl><input className="inp" type="password" placeholder="Mínimo 6 caracteres" value={pass} onChange={e=>setPass(e.target.value)}/></div>{msg&&<div style={{fontSize:13,color:msg.startsWith("✓")?T.green:T.red,marginBottom:10}}>{msg}</div>}<button className="btn" onClick={changePass} disabled={saving} style={{justifyContent:"center"}}>{saving?"A guardar...":"Atualizar"}</button></div>
-    <div className="card"><div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Conta</div><div style={{fontSize:13,color:T.text2,marginBottom:14}}>Sessão: <strong style={{color:T.text}}>{user?.email}</strong></div><button className="gbtn" onClick={onLogout} style={{borderColor:T.red,color:T.red}}>Terminar sessão</button></div>
+
+    {/* Convidar membros */}
+    <div className="card" style={{border:"1px solid "+T.accent+"44",background:T.accentS+"44"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:38,height:38,background:T.accent,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>👥</div>
+        <div><div style={{fontWeight:700,fontSize:15,color:T.text}}>Convidar para a família</div><div style={{fontSize:12,color:T.text2,marginTop:2}}>{members.length} membro{members.length!==1?"s":""} · {family?.name||"—"}</div></div>
+      </div>
+
+      {/* Código em destaque */}
+      <div style={{background:T.surface,borderRadius:12,padding:"14px 16px",marginBottom:12,border:"1px solid "+T.border}}>
+        <div style={{fontSize:11,color:T.text2,marginBottom:6,textTransform:"uppercase",letterSpacing:".8px"}}>Código de convite</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <span className="mono" style={{fontSize:24,letterSpacing:6,color:T.accent,fontWeight:900}}>{code}</span>
+          <button className="gbtn" onClick={copy} style={{flexShrink:0,borderColor:T.accent,color:T.accent}}>{copied?"✓ Copiado!":"📋 Copiar"}</button>
+        </div>
+      </div>
+
+      {/* Como funciona */}
+      <div style={{background:T.surface,borderRadius:11,padding:"12px 14px",marginBottom:12,border:"1px solid "+T.border}}>
+        <div style={{fontWeight:600,fontSize:12,color:T.text2,marginBottom:9,textTransform:"uppercase",letterSpacing:".6px"}}>Como a outra pessoa entra</div>
+        {[
+          {n:"1",t:"Abre o link da app",s:window.location.origin},
+          {n:"2",t:"Escolhe 'Tenho convite'",s:"No ecrã de login"},
+          {n:"3",t:"Insere o código acima",s:"E cria email + palavra-passe"},
+        ].map(step=><div key={step.n} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:7}}>
+          <div style={{width:20,height:20,borderRadius:"50%",background:T.accent,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0,marginTop:1}}>{step.n}</div>
+          <div><div style={{fontSize:13,fontWeight:500,color:T.text}}>{step.t}</div><div style={{fontSize:11,color:T.text2,marginTop:1}}>{step.s}</div></div>
+        </div>)}
+      </div>
+
+      {/* Botão partilhar */}
+      <button className="btn" onClick={share} style={{width:"100%",justifyContent:"center",fontSize:14}}>
+        📤 Partilhar por WhatsApp / Mensagem
+      </button>
+    </div>
+
+    {/* Aparência */}
+    <div className="card">
+      <div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Aparência</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontSize:14}}>Modo Escuro</span>
+        <Tog on={dark} toggle={()=>setDark(p=>!p)}/>
+      </div>
+    </div>
+
+    {/* Segurança */}
+    <div className="card">
+      <div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Segurança</div>
+      <div style={{marginBottom:13}}><Lbl>Nova palavra-passe</Lbl><input className="inp" type="password" placeholder="Mínimo 6 caracteres" value={pass} onChange={e=>setPass(e.target.value)}/></div>
+      {msg&&<div style={{fontSize:13,color:msg.startsWith("✓")?T.green:T.red,marginBottom:10}}>{msg}</div>}
+      <button className="btn" onClick={changePass} disabled={saving} style={{justifyContent:"center"}}>{saving?"A guardar...":"Atualizar"}</button>
+    </div>
+
+    {/* Conta */}
+    <div className="card">
+      <div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Conta</div>
+      <div style={{fontSize:13,color:T.text2,marginBottom:14}}>Sessão: <strong style={{color:T.text}}>{user?.email}</strong></div>
+      <button className="gbtn" onClick={onLogout} style={{borderColor:T.red,color:T.red}}>🚪 Terminar sessão</button>
+    </div>
   </div>;
 }
 
@@ -739,7 +762,7 @@ export default function App(){
   const NAV_B=[{id:"settings",icon:"⚙️",label:"Definições"}];
   const allNav=[...NAV_M,...NAV_B];
   const cur=allNav.find(n=>n.id===tab);
-  const BNAV=[{id:"dashboard",icon:"⊞",label:"Início"},{id:"transactions",icon:"↕",label:"Transações"},{id:"goals",icon:"🎯",label:"Objetivos"},{id:"members",icon:"👥",label:"Membros"},{id:"settings",icon:"⚙️",label:"Definições"}];
+  const BNAV=[{id:"dashboard",icon:"⊞",label:"Início"},{id:"accounts",icon:"🏦",label:"Contas"},{id:"transactions",icon:"↕",label:"Transações"},{id:"goals",icon:"🎯",label:"Objetivos"},{id:"settings",icon:"⚙️",label:"Definições"}];
 
   if(authLoading)return(<Ctx.Provider value={T}><style dangerouslySetInnerHTML={{__html:CSS}}/><div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:T.bg}}><div className="spinner"/></div></Ctx.Provider>);
   if(!user)return(<Ctx.Provider value={T}><style dangerouslySetInnerHTML={{__html:CSS}}/><AuthScreen/></Ctx.Provider>);
@@ -779,8 +802,8 @@ export default function App(){
             {tab==="accounts"&&<Accounts d={d} familyId={familyId} toast={toast}/>}
             {tab==="transactions"&&<Transactions d={d} familyId={familyId} userId={user.id} toast={toast} reload={reload} externalMdl={globalMdlTx} onExternalMdlClear={()=>setGlobalMdlTx(null)}/>}
             {tab==="goals"&&<Goals d={d} familyId={familyId} toast={toast}/>}
-            {tab==="members"&&<Members d={d} familyId={familyId} toast={toast}/>}
-            {tab==="settings"&&<Settings user={user} dark={dark} setDark={setDark} onLogout={logout}/>}
+            {tab==="members"&&<Members d={d}/>}
+            {tab==="settings"&&<Settings user={user} dark={dark} setDark={setDark} onLogout={logout} d={d}/>}
           </>}
         </div>
       </div>
