@@ -93,28 +93,87 @@ function AuthScreen(){
   const [email,setEmail]=useState(""); const [pass,setPass]=useState("");
   const [loading,setLoading]=useState(false); const [err,setErr]=useState("");
 
-  const doLogin=async()=>{setLoading(true);setErr("");const{error}=await sb.auth.signInWithPassword({email,password:pass});if(error)setErr(error.message);setLoading(false);};
+  const doLogin=async()=>{
+    setLoading(true);setErr("");
+    const{error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error){
+      if(error.message.includes("Email not confirmed"))
+        setErr("Email não confirmado. Verifica a tua caixa de correio ou contacta o administrador.");
+      else if(error.message.includes("Invalid login"))
+        setErr("Email ou palavra-passe incorretos.");
+      else
+        setErr(error.message);
+    }
+    setLoading(false);
+  };
   const doRegister=async()=>{
     if(!name.trim()||!famName.trim()){setErr("Preenche todos os campos");return;}
+    if(pass.length<6){setErr("Palavra-passe com mínimo 6 caracteres");return;}
     setLoading(true);setErr("");
     const{data,error}=await sb.auth.signUp({email,password:pass});
-    if(error){setErr(error.message);setLoading(false);return;}
+    if(error){
+      if(error.message.includes("rate limit"))
+        setErr("Demasiadas tentativas. Aguarda 10 minutos e tenta novamente.");
+      else if(error.message.includes("already registered"))
+        setErr("Este email já está registado. Usa 'Entrar' em vez de 'Criar família'.");
+      else
+        setErr(error.message);
+      setLoading(false);return;
+    }
     const uid2=data.user?.id||data.session?.user?.id;
     if(!uid2){setErr("Erro ao criar utilizador. Tenta novamente.");setLoading(false);return;}
     const{data:fam,error:fe}=await sb.from("families").insert({name:famName.trim()}).select().single();
     if(fe){setErr("Erro ao criar família: "+fe.message);setLoading(false);return;}
+    // Criar categorias padrão
+    await sb.from("categories").insert([
+      {family_id:fam.id,label:"Casa",icon:"🏠",color:"#0284C7"},
+      {family_id:fam.id,label:"Supermercado",icon:"🛒",color:"#059669"},
+      {family_id:fam.id,label:"Transportes",icon:"🚗",color:"#D97706"},
+      {family_id:fam.id,label:"Saúde",icon:"❤️",color:"#DC2626"},
+      {family_id:fam.id,label:"Educação",icon:"📚",color:"#7C3AED"},
+      {family_id:fam.id,label:"Lazer",icon:"🎮",color:"#DB2777"},
+      {family_id:fam.id,label:"Investimentos",icon:"📈",color:"#059669"},
+      {family_id:fam.id,label:"Poupança",icon:"💰",color:"#D97706"},
+      {family_id:fam.id,label:"Outros",icon:"📦",color:"#64748B"},
+    ]);
     await sb.from("family_members").insert({family_id:fam.id,user_id:uid2,name:name.trim(),role:"admin",color:COLORS5[0]});
     setLoading(false);
   };
   const doJoin=async()=>{
     if(!name.trim()||!invCode.trim()){setErr("Preenche todos os campos");return;}
+    if(pass.length<6){setErr("Palavra-passe com mínimo 6 caracteres");return;}
     setLoading(true);setErr("");
-    const{data:fam,error:fe}=await sb.from("families").select("id").eq("invite_code",invCode.trim().toUpperCase()).single();
-    if(fe||!fam){setErr("Código inválido.");setLoading(false);return;}
-    const{data,error}=await sb.auth.signUp({email,password:pass});
-    if(error){setErr(error.message);setLoading(false);return;}
-    const uid2=data.user?.id||data.session?.user?.id;
-    await sb.from("family_members").insert({family_id:fam.id,user_id:uid2,name:name.trim(),role:"member",color:COLORS5[1]});
+
+    // Procurar família pelo código — insensível a maiúsculas/minúsculas
+    const codeClean=invCode.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+    const{data:allFams,error:fe}=await sb.from("families").select("id,name,invite_code");
+    if(fe){setErr("Erro ao verificar código: "+fe.message);setLoading(false);return;}
+
+    const fam=allFams?.find(f=>
+      (f.invite_code||"").toUpperCase().replace(/[^A-Z0-9]/g,"")===codeClean
+    );
+
+    if(!fam){
+      setErr("Código inválido. Verifica o código e tenta novamente. Código introduzido: "+codeClean);
+      setLoading(false);return;
+    }
+
+    // Criar conta
+    const{data:authData,error:authErr}=await sb.auth.signUp({email,password:pass});
+    if(authErr){setErr(authErr.message);setLoading(false);return;}
+
+    const uid2=authData.user?.id||authData.session?.user?.id;
+    if(!uid2){setErr("Erro ao criar conta. Tenta novamente.");setLoading(false);return;}
+
+    // Adicionar à família
+    const{error:memErr}=await sb.from("family_members").insert({
+      family_id:fam.id,
+      user_id:uid2,
+      name:name.trim(),
+      role:"member",
+      color:COLORS5[1]
+    });
+    if(memErr){setErr("Conta criada mas erro ao entrar na família: "+memErr.message);}
     setLoading(false);
   };
 
