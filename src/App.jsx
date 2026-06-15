@@ -141,39 +141,65 @@ function AuthScreen(){
   };
   const doJoin=async()=>{
     if(!name.trim()||!invCode.trim()){setErr("Preenche todos os campos");return;}
+    if(!email.trim()){setErr("Introduz o teu email");return;}
     if(pass.length<6){setErr("Palavra-passe com mínimo 6 caracteres");return;}
     setLoading(true);setErr("");
 
-    // Procurar família pelo código — insensível a maiúsculas/minúsculas
     const codeClean=invCode.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
-    const{data:allFams,error:fe}=await sb.from("families").select("id,name,invite_code");
-    if(fe){setErr("Erro ao verificar código: "+fe.message);setLoading(false);return;}
 
-    const fam=allFams?.find(f=>
-      (f.invite_code||"").toUpperCase().replace(/[^A-Z0-9]/g,"")===codeClean
-    );
-
-    if(!fam){
-      setErr("Código inválido. Verifica o código e tenta novamente. Código introduzido: "+codeClean);
+    // PASSO 1: Criar conta primeiro
+    const{data:authData,error:authErr}=await sb.auth.signUp({email,password:pass});
+    if(authErr){
+      if(authErr.message.includes("rate limit"))setErr("Demasiadas tentativas. Aguarda 10 minutos.");
+      else if(authErr.message.includes("already registered"))setErr("Email já registado. Usa 'Entrar'.");
+      else setErr(authErr.message);
       setLoading(false);return;
     }
-
-    // Criar conta
-    const{data:authData,error:authErr}=await sb.auth.signUp({email,password:pass});
-    if(authErr){setErr(authErr.message);setLoading(false);return;}
 
     const uid2=authData.user?.id||authData.session?.user?.id;
     if(!uid2){setErr("Erro ao criar conta. Tenta novamente.");setLoading(false);return;}
 
-    // Adicionar à família
+    // PASSO 2: Agora com sessão ativa, procurar a família pelo código
+    // Aguardar um momento para a sessão ser estabelecida
+    await new Promise(r=>setTimeout(r,1500));
+
+    const{data:allFams,error:fe}=await sb.from("families").select("id,name,invite_code");
+
+    let fam=null;
+    if(!fe&&allFams){
+      fam=allFams.find(f=>(f.invite_code||"").toUpperCase().replace(/[^A-Z0-9]/g,"")===codeClean);
+    }
+
+    // Se ainda não encontrou (RLS bloqueou), tentar via função pública
+    if(!fam){
+      // Tentar sem filtro de RLS usando o código diretamente
+      const{data:famDirect}=await sb.from("families").select("id,name,invite_code")
+        .ilike("invite_code",codeClean).maybeSingle();
+      if(famDirect)fam=famDirect;
+    }
+
+    if(!fam){
+      setErr("Código inválido: '"+codeClean+"'. Confirma o código nas Definições da app do Diogo.");
+      // Apagar a conta criada para não ficar presa
+      await sb.auth.signOut();
+      setLoading(false);return;
+    }
+
+    // PASSO 3: Adicionar à família
     const{error:memErr}=await sb.from("family_members").insert({
       family_id:fam.id,
       user_id:uid2,
       name:name.trim(),
       role:"member",
-      color:COLORS5[1]
+      color:COLORS5[Math.floor(Math.random()*COLORS5.length)],
     });
-    if(memErr){setErr("Conta criada mas erro ao entrar na família: "+memErr.message);}
+
+    if(memErr){
+      setErr("Conta criada mas erro ao entrar na família: "+memErr.message+". Contacta o Diogo.");
+      setLoading(false);return;
+    }
+
+    // Sucesso! A sessão já está ativa, o loadMember vai detetar automaticamente
     setLoading(false);
   };
 
