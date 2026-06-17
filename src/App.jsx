@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useMemo } from "react";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "@supabase/supabase-js";
 
 // ─── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://iwttpcfxxziivncwcger.supabase.co";
