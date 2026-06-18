@@ -968,6 +968,160 @@ function Reports({d}){
 }
 
 // ── OBJETIVOS ────────────────────────────────────────────────────────────────
+// ── ORÇAMENTOS ────────────────────────────────────────────────────────────────
+function Budgets({d,familyId,toast}){
+  const T=useT();
+  const{budgets,categories:cats,transactions:tx}=d;
+  const [mdl,setMdl]=useState(null);
+  const curMonth=new Date().toISOString().slice(0,7);
+
+  const monthTx=tx.filter(t=>t.type==="expense"&&t.date&&t.date.slice(0,7)===curMonth);
+  const spentByCat={};
+  monthTx.forEach(t=>{spentByCat[t.category]=(spentByCat[t.category]||0)+parseFloat(t.amount);});
+
+  const budgetsWithSpent=budgets.filter(b=>b.month===curMonth).map(b=>({
+    ...b,
+    spent:spentByCat[b.category_id]||0,
+    cat:cats.find(c=>c.id===b.category_id)||{icon:"📦",label:b.category_id,color:"#64748B"},
+  }));
+
+  const catsWithBudget=new Set(budgetsWithSpent.map(b=>b.category_id));
+  const catsWithoutBudget=cats.filter(c=>spentByCat[c.id]&&!catsWithBudget.has(c.id));
+
+  const save=async(f)=>{
+    const row={family_id:familyId,category_id:f.category_id,limit_amount:parseFloat(f.limit),month:curMonth};
+    const existing=budgets.find(b=>b.category_id===f.category_id&&b.month===curMonth);
+    if(existing)await sb.from("budgets").update(row).eq("id",existing.id);
+    else await sb.from("budgets").insert({...row,id:uid()});
+    toast("Orçamento guardado!","📊");setMdl(null);
+  };
+  const del=async(id)=>{await sb.from("budgets").delete().eq("id",id);toast("Orçamento removido","🗑️");};
+
+  const totalBudget=budgetsWithSpent.reduce((s,b)=>s+parseFloat(b.limit_amount),0);
+  const totalSpent=budgetsWithSpent.reduce((s,b)=>s+b.spent,0);
+  const overCount=budgetsWithSpent.filter(b=>b.spent>parseFloat(b.limit_amount)).length;
+  const warnCount=budgetsWithSpent.filter(b=>{const p=b.spent/parseFloat(b.limit_amount);return p>=0.8&&p<1;}).length;
+
+  return <div style={{display:"flex",flexDirection:"column",gap:16}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div><h2 style={{fontSize:17,fontWeight:600}}>Orçamentos Mensais</h2>
+        <p style={{fontSize:13,color:T.text2,marginTop:3}}>{new Date().toLocaleDateString("pt-PT",{month:"long",year:"numeric"})}</p></div>
+      <button className="btn" onClick={()=>setMdl({})}>+ Definir</button>
+    </div>
+
+    {budgetsWithSpent.length>0&&<div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+      {[
+        {l:"Total orçamentado",v:fmt(totalBudget),col:T.accent,i:"📊"},
+        {l:"Total gasto",v:fmt(totalSpent),col:totalSpent>totalBudget?T.red:T.green,i:"💸"},
+        {l:"Excedidos",v:overCount,col:overCount>0?T.red:T.green,i:"⚠️"},
+        {l:"Em alerta",v:warnCount,col:warnCount>0?T.amber:T.green,i:"⚡"},
+      ].map(s=><div key={s.l} className="stat fu" style={{minWidth:120}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div><div style={{fontSize:10,color:T.text2,textTransform:"uppercase",letterSpacing:".8px",marginBottom:5}}>{s.l}</div>
+            <div className="mono" style={{fontSize:19,fontWeight:700,color:s.col}}>{s.v}</div></div>
+          <span style={{fontSize:20,opacity:.6}}>{s.i}</span>
+        </div>
+      </div>)}
+    </div>}
+
+    {budgetsWithSpent.length===0&&<div className="card" style={{textAlign:"center",padding:"36px",color:T.text2}}>
+      <div style={{fontSize:36,marginBottom:10}}>📊</div>
+      <div style={{fontWeight:600,fontSize:15,marginBottom:8}}>Sem orçamentos definidos</div>
+      <p style={{fontSize:13,marginBottom:16}}>Define limites mensais por categoria para receber alertas quando estás a gastar demais.</p>
+      <button className="btn" onClick={()=>setMdl({})} style={{margin:"0 auto"}}>+ Definir orçamento</button>
+    </div>}
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:13}}>
+      {budgetsWithSpent.map(b=>{
+        const pct=parseFloat(b.limit_amount)>0?(b.spent/parseFloat(b.limit_amount)*100):0;
+        const over=pct>=100,warn=pct>=80&&!over;
+        const sc=over?T.red:warn?T.amber:T.green;
+        return <div key={b.id} className="card fu" style={{borderColor:over?T.red+"66":warn?T.amber+"44":""}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:13}}>
+            <div style={{display:"flex",alignItems:"center",gap:9}}>
+              <div style={{width:38,height:38,background:(b.cat.color||"#64748B")+"18",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:19}}>{b.cat.icon}</div>
+              <div><div style={{fontWeight:600,fontSize:14}}>{b.cat.label}</div>
+                {over&&<span style={{fontSize:11,color:T.red,fontWeight:600}}>⚠ Excedido!</span>}
+                {warn&&<span style={{fontSize:11,color:T.amber,fontWeight:600}}>⚡ Atenção</span>}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:3}}>
+              <button className="ibtn edit" onClick={()=>setMdl({...b,category_id:b.category_id,limit:String(b.limit_amount)})}>✏️</button>
+              <button className="ibtn del" onClick={()=>del(b.id)}>🗑</button>
+            </div>
+          </div>
+          <div style={{height:10,background:T.trackBg,borderRadius:5,overflow:"hidden",marginBottom:8}}>
+            <div style={{height:"100%",width:Math.min(pct,100)+"%",background:sc,borderRadius:5,transition:"width 1s ease"}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+            <span>Gasto: <span className="mono" style={{fontWeight:700,color:sc}}>{fmt(b.spent)}</span></span>
+            <span>Limite: <span className="mono" style={{fontWeight:700}}>{fmt(parseFloat(b.limit_amount))}</span></span>
+          </div>
+          <div style={{marginTop:6,fontSize:11,color:T.text2}}>
+            {over?`Excedeu em ${fmt(b.spent-parseFloat(b.limit_amount))}`:`Restam ${fmt(parseFloat(b.limit_amount)-b.spent)} (${(100-Math.min(pct,100)).toFixed(0)}%)`}
+          </div>
+        </div>;
+      })}
+    </div>
+
+    {catsWithoutBudget.length>0&&<div className="card">
+      <div style={{fontWeight:600,fontSize:14,marginBottom:12}}>💡 Categorias sem orçamento definido</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {catsWithoutBudget.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:T.elevated,borderRadius:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:9}}>
+            <span style={{fontSize:18}}>{c.icon}</span>
+            <div><div style={{fontSize:13,fontWeight:500}}>{c.label}</div>
+              <div style={{fontSize:11,color:T.text2}}>Gasto este mês: <span className="mono" style={{fontWeight:600,color:T.red}}>{fmt(spentByCat[c.id]||0)}</span></div>
+            </div>
+          </div>
+          <button className="gbtn" style={{fontSize:12,padding:"5px 11px"}} onClick={()=>setMdl({category_id:c.id,limit:""})}>Definir limite</button>
+        </div>)}
+      </div>
+    </div>}
+
+    {mdl!==null&&<Mdl title="Definir Orçamento" onClose={()=>setMdl(null)} onSave={()=>{if(!mdl.category_id||!mdl.limit)return;save(mdl);}} saveLabel="Guardar">
+      <div style={{display:"flex",flexDirection:"column",gap:13}}>
+        <Fld label="Categoria">
+          <select className="sel" value={mdl.category_id||""} onChange={e=>setMdl(p=>({...p,category_id:e.target.value}))} disabled={!!mdl.id}>
+            <option value="">Escolhe uma categoria...</option>
+            {cats.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+          </select>
+        </Fld>
+        <Fld label="Limite mensal (€)">
+          <input className="inp" type="number" placeholder="Ex: 300" value={mdl.limit||""} onChange={e=>setMdl(p=>({...p,limit:e.target.value}))} style={{fontSize:22,fontWeight:700}}/>
+        </Fld>
+        {mdl.category_id&&spentByCat[mdl.category_id]&&<div style={{padding:"10px 13px",background:T.amberS,borderRadius:9,border:"1px solid "+T.amber+"44",fontSize:12,color:T.text2,lineHeight:1.6}}>
+          Já gastaste <strong style={{color:T.amber}}>{fmt(spentByCat[mdl.category_id])}</strong> nesta categoria este mês.
+        </div>}
+      </div>
+    </Mdl>}
+  </div>;
+}
+
+// ── HOOK: notificações de atividade (seguro) ────────────────────────────────
+function useActivityNotifs(familyId, currentUserId, members, onNotif){
+  const safeMembers = members||[];
+  useEffect(()=>{
+    if(!familyId||!currentUserId)return;
+    const ch=sb.channel("notifs-"+familyId)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"transactions",filter:"family_id=eq."+familyId},(payload)=>{
+        const tx=payload.new;
+        if(tx.user_id===currentUserId)return;
+        const m=safeMembers.find(m=>m.user_id===tx.user_id);
+        const name=m?.name||"Membro";
+        const icon=tx.type==="income"?"📥":"📤";
+        const val=new Intl.NumberFormat("pt-PT",{style:"currency",currency:"EUR"}).format(parseFloat(tx.amount||0));
+        onNotif(`${name}: ${tx.type==="income"?"receita":"despesa"} de ${val}`,icon);
+      })
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"goals",filter:"family_id=eq."+familyId},(payload)=>{
+        const g=payload.new;
+        onNotif(`Novo objetivo: ${g.icon||"🎯"} ${g.name||""}`, "🎯");
+      })
+      .subscribe();
+    return()=>sb.removeChannel(ch);
+  },[familyId,currentUserId]);
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 export default function App(){
   const [dark,setDark]=useState(false);
